@@ -2,3 +2,4 @@ beautifulsoup4
 dateparser
 Gunicorn
 Flask
+requests
