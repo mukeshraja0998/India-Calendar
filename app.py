@@ -9,6 +9,8 @@ import dateparser
 import json
 from flask import Flask, request, jsonify
 import requests
+import sqlite3
+import os
 
 HEADERS = {
     'Authority': 'www.drikpanchang.com',
@@ -363,8 +365,43 @@ class HinduCalendar():
 ###############################################################################
 
 app = Flask(__name__)
+DB_FILE = "database.db"
 
-@app.route('/', methods=['GET'])
+def create_db():
+    if not os.path.exists(DB_FILE):
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('''CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)''')
+        conn.commit()
+        conn.close()
+create_db()
+@app.route("/")
+def home():
+    return "Welcome to the SQLite Flask API!"
+
+@app.route("/add_user", methods=["GET"])
+def add_user():
+    name = "temp"
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO users (name) VALUES (?)", (name,))
+    conn.commit()
+    user_id = cursor.lastrowid
+    conn.close()
+
+    return jsonify({"message": "User added", "id": user_id})
+
+@app.route("/users", methods=["GET"])
+def get_users():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users")
+    users = [{"id": row[0], "name": row[1]} for row in cursor.fetchall()]
+    conn.close()
+    
+    return jsonify(users)
+
+@app.route('/check', methods=['GET'])
 def get_panchang():
     cal = HinduCalendar(city="chennai", method='tamil')
     a,b=cal.get_date(date='08/03/2025', regional=False)
@@ -373,6 +410,5 @@ def get_panchang():
         return jsonify(b)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
