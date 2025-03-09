@@ -175,7 +175,6 @@ def trigger():
             if data.get('Event') not in [None, "N/A", ""]:
                 send_email(user.email, html_body)
             else:
-                send_email(user.email, html_body)
                 print("No event found for",today_date)
         except Exception as e:
             print(f"❌ Error sending email to {user.email}: {e}")
