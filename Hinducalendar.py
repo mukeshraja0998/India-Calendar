@@ -205,8 +205,11 @@ class HinduCalendar():
         regional_split = regional_datestring.split(', ')
         regional_dd = regional_split[0]
         regional_month = regional_split[1].split()[0]
-        print(regional_month)
-        regional_mm = str(regional_months.index(regional_month) + 1).zfill(2)
+        try:
+            regional_mm = str(regional_months.index(regional_month) + 1).zfill(2)
+        except:
+            regional_month = regional_split[1]
+            regional_mm = str(regional_months.index(regional_month) + 1).zfill(2)
         regional_yy = regional_split[4].split()[0]
         regional_date = dateparser.parse(
             f'{regional_dd}/{regional_mm}/{regional_yy}',

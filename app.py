@@ -14,14 +14,13 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 from flask_migrate import Migrate
-
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DB_EXTERNAL")
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+import pytz
 
 load_dotenv()
+IST = pytz.timezone("Asia/Kolkata")
 
 app = Flask(__name__)
+
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DB_EXTERNAL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -30,7 +29,7 @@ migrate = Migrate(app, db)
 with app.app_context():
     db.create_all()
 
-app.config['SECRET_KEY'] = 'your-very-secret-key'
+app.config['SECRET_KEY'] = 'Flask-Calendar-App'
 
 class EmailSubscription(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -42,10 +41,10 @@ class EmailSubscription(db.Model):
 def send_email(TO_EMAIL,html_body):
     EMAIL_ADDRESS = os.getenv("GMAIL_APP_USERNAME")
     APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-    current_date = datetime.now().strftime("%B %d, %Y")
+    #current_date = datetime.now().strftime("%B %d, %Y")
+    current_date = datetime.now(pytz.utc).astimezone(IST).strftime("%B %d, %Y")
     msg = MIMEMultipart()
-    
-    msg["Subject"] = f"Calendar - notification ({current_date})"  # Add the current date to the subject
+    msg["Subject"] = f"Calendar - notification ({current_date})"
     msg["From"] = EMAIL_ADDRESS
     msg["To"] = TO_EMAIL
     msg.attach(MIMEText(html_body, "html"))
@@ -59,20 +58,20 @@ def send_email(TO_EMAIL,html_body):
     except Exception as e:
         print(f"❌ Error: {e}")
 
-def generate(event):
+def generate(event,calendar_type="Tamil"):
     client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
     model = "gemini-2.0-flash"
-    
+    print("calendar_type",calendar_type)
     json_format = {
-        "quote": {
-            "tamil": "Error in event",
+        f"quote": {
+            calendar_type: "Error in event",
             "english": "Error in event"
         },
         "morning_wish": "Error in event"
     }
     response = client.models.generate_content(
             model=model,
-            contents=f"Provide a beautiful one quote in Tamil and english for '{event}' in one line with morning wish in json format if any error in event just generate only morning wish json format will be '{json_format}'"
+            contents=f"Provide a beautiful one quote in {calendar_type} and english for '{event}' in one line with morning wish in json format if any error in event just generate only morning wish json format will be '{json_format}'"
         )
     try:
         cleaned_response = response.text.replace("```json", "").replace("```", "").strip()
@@ -94,10 +93,6 @@ def health():
 def index():
     return render_template('index.html')
 
-@app.route('/cron', methods=['GET'])
-def cron():
-    return jsonify({"message": "Flask app with PostgreSQL is running!"})
-
 @app.route('/calendar', methods=['POST'])
 def get_panchang():
     user_date = request.form.get('userInput')
@@ -105,7 +100,6 @@ def get_panchang():
         formatted_date = datetime.strptime(user_date, "%Y-%m-%d").strftime("%d/%m/%Y")
     except ValueError:
         return "<h3>Invalid date format. Please use YYYY-MM-DD.</h3>"
-
     calendar_type = request.form.get('calendarType')
     cal = HinduCalendar(method=calendar_type, city='auto', regional_language=False)
     a,b=cal.get_date(date=formatted_date, regional=False)
@@ -119,7 +113,6 @@ def get_panchang():
             "Panchang": b.get("panchang", "N/A"),
             "calendar_type": calendar_type
         }
-        
         return render_template('calendar.html', data=data,Regional=calendar_type)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -170,7 +163,7 @@ def trigger():
             }
             if data.get('Event') not in [None, "N/A", ""]:
                 event=data['Event']
-                gen_ai = generate(event)
+                gen_ai = generate(event,calendar_type)
                 json_data = json.loads(gen_ai)
                 template = Template(html_template_2)
                 html_body = template.render(data=json_data, calendar_data=data, event=event)
@@ -180,11 +173,6 @@ def trigger():
         except Exception as e:
             print(f"❌ Error sending email to {user.email}: {e}")
     return 'done',200
-
-@app.route("/success")
-def success():
-    flash('Thank you for subscribing! 🎉', 'success')
-    return redirect(url_for('index'))
 
 @app.route("/about")
 def about():
