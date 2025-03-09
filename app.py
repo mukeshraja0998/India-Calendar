@@ -1,414 +1,217 @@
-import os
-import re
-import json
-import logging
+import re, json,os,smtplib,requests
 from datetime import datetime as dt
 from urllib.parse import urlparse
-from bs4 import BeautifulSoup
-import dateparser
-import json
-from flask import Flask, request, jsonify
-import requests
-import sqlite3
-import os
-
-HEADERS = {
-    'Authority': 'www.drikpanchang.com',
-    'Accept': ('text/html,application/xhtml+xml,application/xml;'
-               'q=0.9,image/webp,image/apng,*/*;'
-               'q=0.8,application/signed-exchange;v=b3;q=0.9'),
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Accept-Language': 'en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Upgrade-Insecure-Requests': '1',
-    'User-Agent': ('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-                   '(KHTML, like Gecko) Chrome/84.0.4147.105 Safari/537.36')
-}
-
-class HinduCalendar():
-    server_url = 'https://www.drikpanchang.com'
-    sitemap = {
-        'settings': '/settings/drikpanchang-settings.html'
-    }
-    methods = {
-        'assamese': {
-            'month': '/assamese/assamese-month-panjika.html',
-            'day': '/assamese/assamese-day-panjika.html',
-            'lang': 'as',
-            'language': 'Assamese (অসমীয়া)'
-        },
-        'bengali': {
-            'month': '/bengali/bengali-month-panjika.html',
-            'day': '/bengali/bengali-day-panjika.html',
-            'lang': 'bn',
-            'language': 'Bengali (বাংলা)',
-        },
-        'gujarati': {
-            'month': '/gujarati/panchang/gujarati-month-panchang.html',
-            'day': '/gujarati/panchang/gujarati-day-panchang.html',
-            'lang': 'gu',
-            'language': 'Gujarati (ગુજરાતી)'
-        },
-        'hindi': {
-            'month': '/panchang/month-panchang.html',
-            'day': '/panchang/day-panchang.html',
-            'lang': 'hi',
-            'language': 'Hindi (हिन्दी)'
-        },
-        'isckon': {
-            'month': '/iskcon/iskcon-month-calendar.html',
-            'day': '/iskcon/iskcon-day-calendar.html',
-            'lang': 'en',
-            'language': 'English'
-        },
-        'kannada': {
-            'month': '/kannada/panchangam/kannada-month-panchangam.html',
-            'day': '/kannada/panchangam/kannada-day-panchangam.html',
-            'lang': 'kn',
-            'language': 'Kannada (ಕನ್ನಡ)',
-        },
-        'malayalam': {
-            'month': '/malayalam/malayalam-month-calendar.html',
-            'day': '/malayalam/malayalam-day-calendar.html',
-            'lang': 'ml',
-            'language': 'Malayalam (മലയാളം)',
-            'lang': 'en',
-            'language': 'English'
-        },
-        'marathi': {
-            'month': '/marathi/panchang/marathi-month-panchang.html',
-            'day': '/marathi/panchang/marathi-day-panchang.html',
-            'lang': 'mr',
-            'language': 'Marathi (मराठी)',
-        },
-        'nepali': {
-            'month': '/nepali/calendar/nepali-patro.html',
-            'day': '/nepali/calendar/nepali-day-patro.html',
-            'lang': 'ne',
-            'language': 'Nepali (नेपाली)',
-        },
-        'oriya': {
-            'month': '/oriya/oriya-panji.html',
-            'day': '/oriya/oriya-day-panji.html',
-            'lang': 'or',
-            'language': 'Odia (ଓଡ଼ିଆ)',
-
-        },
-        'tamil': {
-            'month': '/tamil/tamil-month-panchangam.html',
-            'day': '/tamil/tamil-day-panchangam.html',
-            'lang': 'en',
-            'language': 'English',
-        },
-        'telugu': {
-            'month': '/telugu/panchanga/telugu-month-panchanga.html',
-            'day': '/telugu/panchanga/telugu-day-panchanga.html',
-            'lang': 'te',
-            'language': 'Telugu (తెలుగు)'
-
-        }
-    }
-    def __init__(self, method='marathi', city='auto',
-                 regional_language=False, geonames_id=None,
-                 storage_dir=None):
-        self._session = requests.Session()
-        self.method = None
-        self.regional_language = regional_language
-        self.city = city
-        self.geonames_id = geonames_id
-        self.regional_lists = {}
-        self.storage_dir = storage_dir
-        self.set_method(method)
-        self.set_regional_language(regional_language)
-        self._session.headers.update(HEADERS)
-
-    def get_languages(self):
-        'dpLanguageSettingId'
-
-    def get_date_url(self, date, regional=False, day=False):
-        logging.info(
-            f"get_date_url(date={date}, regional={regional}, day={day})"
-        )
-        dmy_split = re.split(r'/|:|\.|-|,', re.sub(r'\s', '', date))
-        dd = dmy_split[0].zfill(2)
-        mm = dmy_split[1].zfill(2) if len(dmy_split) > 1 else dt.today().month
-        yyyy = dmy_split[2] if len(dmy_split) > 2 else dt.today().year
-        date = f'{dd}/{mm}/{yyyy}'
-        _parse = urlparse(self.method_day_url if day else self.method_url)
-        _query = f'lunar-date={date}' if regional else f'date={date}'
-        if self.geonames_id:
-            _query += f'&geoname-id={self.geonames_id}'
-
-        date_url = _parse._replace(query=_query).geturl()
-        return date_url
-
-    def get_details(self, date, regional=False):
-        "Work in Progress"
-        "TODO: Figure out if this is needed at all"
-        logging.info(
-            f"get_details(date={date}, regional={regional})"
-        )
-        date_url = self.get_date_url(date, regional=regional, day=True)
-        r = self.get(date_url)
-        content = r.content.decode('utf-8')
-        soup = BeautifulSoup(content, 'html.parser')
-        cell_divs = soup.find_all('div', {'class': 'dpTableCell'})
-        key_class = 'dpTableKey'
-        val_class = 'dpTableValue'
-
-        details = {}
-        for cell in cell_divs:
-            if key_class in cell['class']:
-                cell_key = cell.get_text()
-            if val_class in cell['class']:
-                cell_value = cell.get_text()
-                details[cell_key] = cell_value
-        return soup, details
-
-    def get_date(self, date, regional=False):
-        regional_months=[]
-        logging.info(
-            f"get_date(date={date}, regional={regional})"
-        )
-        date_url = self.get_date_url(date, regional=regional)
-        r = self.get(date_url)
-        content = r.content.decode('utf-8')
-        soup = BeautifulSoup(content, 'html.parser')
-        day_div = soup.find('div', {'class': 'dpDayPanchangWrapper'})
-        panchang_div = day_div.find('div', {'class': 'dpPanchang'})
-        panchang = {}
-        for element in panchang_div.find_all('p', {'class': 'dpElement'}):
-            _key = element.find('span', {'class': 'dpElementKey'})
-            _key_text = _key.get_text(separator=' ', strip=True)
-            _val = element.find('span', {'class': 'dpElementValue'})
-            _val_text = _val.get_text(separator=' ', strip=True)
-            if _key_text in panchang:
-                while _key_text in panchang:
-                    _split = _key_text.split(' #')
-                    try:
-                        _split[1] = str(int(_split[1]) + 1)
-                    except IndexError:
-                        _split.append('1')
-                    _key_text = ' #'.join(_split)
-            panchang[_key_text] = _val_text
-
-        scripts = soup.find_all('script')
-        for script in scripts:
-            script_text = str(script)  # Convert script to text
-            if 'dpTimeContext' in script_text:
-                regional_str = script_text.split(';')[-4].split('=')[1].strip()
-                try:
-                    regional_months = json.loads(regional_str)
-                    break
-                except json.JSONDecodeError:
-                    pass
-        head_div = soup.find('div', {'class': 'dpPHeaderContent'})
-        regional_div = head_div.find('div', {'class': 'dpPHeaderLeftContent'})
-        regional_datestring = regional_div.get_text(separator=', ', strip=True)
-        regional_split = regional_datestring.split(', ')
-        regional_dd = regional_split[0]
-        regional_month = regional_split[1].split()[0]
-        print(regional_month)
-        regional_mm = str(regional_months.index(regional_month) + 1).zfill(2)
-        regional_yy = regional_split[4].split()[0]
-        regional_date = dateparser.parse(
-            f'{regional_dd}/{regional_mm}/{regional_yy}',
-            settings={'DATE_ORDER': 'DMY'}
-        ).strftime("%d/%m/%Y")
-        ce_div = head_div.find('div', {'class': 'dpPHeaderRightContent'})
-        ce_date = dateparser.parse(ce_div.get_text(separator=' ', strip=True))
-        ce_datestring = ce_date.strftime("%A, %d %B, %Y")
-        ce_date = ce_date.strftime("%d/%m/%Y")
-        logging.info(f"CE: {ce_date}, Regional: {regional_date}")
-        headwrap_div = soup.find('div', {'class': 'dpPHeaderWrapper'})
-        event_div = headwrap_div.find('div', {'class': 'dpPHeaderEventList'})
-        if event_div:
-            event_text = event_div.get_text(separator=' ', strip=True)
-        else:
-            event_text = None
-        date_object = {}
-        date_object['method'] = self.method
-        date_object['language'] = (
-            self.methods[self.method]['language']
-            if self.regional_language else
-            'English'
-        )
-        date_object['city'] = self.city
-        date_object['ce_date'] = ce_date
-        date_object['ce_datestring'] = ce_datestring
-        date_object['event'] = event_text
-        date_object['regional_date'] = regional_date
-        date_object['regional_datestring'] = regional_datestring
-        date_object['panchang'] = panchang
-        date_object['url'] = date_url
-        date_json = json.dumps(date_object, indent=4, ensure_ascii=False)
-        return date_object,date_json
-
-    def get_regional_lists(self):
-        r = self.get(self.method_url)
-        content = r.content.decode('utf-8')
-        soup = BeautifulSoup(content, 'html.parser')
-        lists_div = soup.find('div', {'class': 'dpListsWrapper'})
-        cards = lists_div.find_all('div', {'class': 'dpCard'})
-        regional_lists = {}
-        for card in cards:
-            header = card.find('h2', {'class': 'dpCardTitle'})
-            ol = card.find('ol', {'class': 'dpListContent'})
-            if ol and header:
-                header_text = header.get_text(separator=' ', strip=True)
-                items = ol.find_all('li')
-                elements = []
-                for item in items:
-                    elements.append(item.get_text(separator=' ', strip=True))
-
-                pattern_map = {
-                    'Month List': 'month_names',
-                    'Nakshatra List': 'nakshatra_names',
-                    'Anandadi Yoga Names': 'anandadi_yoga_names',
-                    'Yoga Names': 'yoga_names',
-                    'Karana Names': 'karana_names',
-                    'Tithi Names': 'tithi_names',
-                    'Zodiac Names': 'zodiac_names',
-                    'Samvatsara Names': 'samvatsara_names'
-                }
-                for pattern, varname in pattern_map.items():
-                    if pattern in header_text:
-                        header_text = varname
-                        break
-                else:
-                    logging.warning(f"Unknown Header: {header_text}")
-
-                if header_text in regional_lists:
-                    logging.error(f"List '{header_text}' overwritten.")
-
-                regional_lists[header_text] = elements
-
-        self.regional_lists = regional_lists
-        if self.storage_dir:
-            for known_header in pattern_map.values():
-                if known_header in regional_lists:
-                    list_filename = f'{self.method}_{known_header}.txt'
-                    list_file = os.path.join(self.storage_dir, list_filename)
-                    with open(list_file, 'w') as f:
-                        f.write('\n'.join(regional_lists[known_header]))
-        return regional_lists
-
-    def find_regional_date(self, date):
-        return self.get_date(date, regional=True)
-
-    def set_city(self, geonames_id, city):
-        logging.info(f"City change: {(self.geonames_id, self.city)} -> "
-                     f"{(geonames_id, city)}")
-        self.geonames_id = geonames_id
-        self.city = city
-
-    def set_regional_language(self, regional):
-        if regional:
-            language = 'regional'
-        else:
-            language = 'english'
-
-        self.regional_language = regional
-        if language == 'regional':
-            lang = self.methods[self.method]['lang']
-            numeral = 'regional'
-        else:
-            lang = 'en'
-            numeral = 'english'
-
-        language_cookies = [
-                requests.cookies.create_cookie(
-                    domain='.drikpanchang.com',
-                    name='dkplanguage',
-                    value=lang
-                ),
-                requests.cookies.create_cookie(
-                    domain='.drikpanchang.com',
-                    name='dkpnumerallocale',
-                    value=numeral
-                )
-            ]
-        self.set_cookies(*language_cookies)
-        return True
-
-    def set_method(self, method):
-        logging.info(f"Method change: '{self.method}' -> '{method}'")
-        valid_methods = list(self.methods.keys())
-        method = method.strip().lower()
-        if method in valid_methods:
-            self.method = method
-            self.method_url = self.get_url(method)
-            self.method_day_url = self.get_url(method, day=True)
-            self.set_regional_language(self.regional_language)
-        else:
-            if method not in self.methods:
-                raise RuntimeWarning("Invalid method. "
-                                     f"Valid methods are: {valid_methods}")
-            return False
-        return True
-
-    def set_cookies(self, *cookie_objs):
-        for cookie_obj in cookie_objs:
-            self._session.cookies.set_cookie(cookie_obj)
-
-    def get_url(self, key, day=False):
-        if key in self.sitemap:
-            return f'{self.server_url}{self.sitemap[key]}'
-        if key in self.methods:
-            cal_type = 'day' if day else 'month'
-            return f"{self.server_url}{self.methods[key][cal_type]}"
-
-    def get(self, *args, **kwargs):
-        return self._session.get(*args, **kwargs)
-
-
-
-###############################################################################
+from flask import Flask, request, jsonify, render_template, Response, flash, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from html_template import html_template_2
+from Hinducalendar import HinduCalendar
+from jinja2 import Template
+import base64
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+from flask_migrate import Migrate
 
 app = Flask(__name__)
-DB_FILE = "database.db"
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DB_EXTERNAL")
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-def create_db():
-    if not os.path.exists(DB_FILE):
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute('''CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)''')
-        conn.commit()
-        conn.close()
-create_db()
-@app.route("/")
-def home():
-    return "Welcome to the SQLite Flask API!"
+load_dotenv()
 
-@app.route("/add_user", methods=["GET"])
-def add_user():
-    name = "temp"
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO users (name) VALUES (?)", (name,))
-    conn.commit()
-    user_id = cursor.lastrowid
-    conn.close()
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DB_EXTERNAL")
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
-    return jsonify({"message": "User added", "id": user_id})
+with app.app_context():
+    db.create_all()
 
-@app.route("/users", methods=["GET"])
-def get_users():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users")
-    users = [{"id": row[0], "name": row[1]} for row in cursor.fetchall()]
-    conn.close()
+app.config['SECRET_KEY'] = 'your-very-secret-key'
+
+class EmailSubscription(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)  # Add Name Column
+    email = db.Column(db.String(100), unique=True, nullable=False)
+    calendar_type = db.Column(db.String(100), nullable=False)
+    email_notification = db.Column(db.String(3), nullable=False, default='yes')
+
+def send_email(TO_EMAIL,html_body):
+    EMAIL_ADDRESS = os.getenv("GMAIL_APP_USERNAME")
+    APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+    current_date = datetime.now().strftime("%B %d, %Y")
+    msg = MIMEMultipart()
     
-    return jsonify(users)
-
-@app.route('/check', methods=['GET'])
-def get_panchang():
-    cal = HinduCalendar(city="chennai", method='tamil')
-    a,b=cal.get_date(date='08/03/2025', regional=False)
-    print(b)
+    msg["Subject"] = f"Calendar - notification ({current_date})"  # Add the current date to the subject
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = TO_EMAIL
+    msg.attach(MIMEText(html_body, "html"))
     try:
-        return jsonify(b)
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(EMAIL_ADDRESS, APP_PASSWORD)
+        server.sendmail(EMAIL_ADDRESS, TO_EMAIL, msg.as_string())
+        server.quit()
+        print("✅ Email sent successfully!")
+    except Exception as e:
+        print(f"❌ Error: {e}")
+
+def generate(event):
+    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+    model = "gemini-2.0-flash"
+    
+    json_format = {
+        "quote": {
+            "tamil": "Error in event",
+            "english": "Error in event"
+        },
+        "morning_wish": "Error in event"
+    }
+    response = client.models.generate_content(
+            model=model,
+            contents=f"Provide a beautiful one quote in Tamil and english for '{event}' in one line with morning wish in json format if any error in event just generate only morning wish json format will be '{json_format}'"
+        )
+    try:
+        cleaned_response = response.text.replace("```json", "").replace("```", "").strip()
+        return cleaned_response
+    except json.JSONDecodeError:
+        print("Response is not valid JSON.")
+        print("Raw response:")
+        print(response.text)
+
+with app.app_context():
+    db.create_all()
+    
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"message": "Flask app with PostgreSQL is running!"})
+
+@app.route('/', methods=['GET'])
+@app.route('/home', methods=['GET'])
+def index():
+    return render_template('index.html')
+
+@app.route('/cron', methods=['GET'])
+def cron():
+    return jsonify({"message": "Flask app with PostgreSQL is running!"})
+
+@app.route('/calendar', methods=['POST'])
+def get_panchang():
+    user_date = request.form.get('userInput')
+    try:
+        formatted_date = datetime.strptime(user_date, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        return "<h3>Invalid date format. Please use YYYY-MM-DD.</h3>"
+
+    calendar_type = request.form.get('calendarType')
+    cal = HinduCalendar(method=calendar_type, city='auto', regional_language=False)
+    a,b=cal.get_date(date=formatted_date, regional=False)
+    try:
+        b = json.loads(b)
+        data = {
+            "English Date": b.get("ce_datestring", "N/A"),
+            "Regional Date": b.get("regional_date", "N/A"),
+            "Event": b.get("event", "N/A"),
+            "Regional Date String": b.get("regional_datestring", "N/A"),
+            "Panchang": b.get("panchang", "N/A"),
+            "calendar_type": calendar_type
+        }
+        
+        return render_template('calendar.html', data=data,Regional=calendar_type)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/add-new', methods=['GET', 'POST'])
+def addnew():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        email = request.form.get('email')
+        calendar_type = request.form.get('calendarType')
+        email_notification = request.form.get('email_notification')
+        existing_subscription = EmailSubscription.query.filter_by(email=email).first()
+        if existing_subscription:
+            existing_subscription.name = name
+            existing_subscription.calendar_type = calendar_type
+            existing_subscription.email_notification = email_notification
+        else:
+            new_subscription = EmailSubscription(
+                name=name,
+                email=email,
+                calendar_type=calendar_type,
+                email_notification=email_notification
+            )
+            db.session.add(new_subscription)
+        db.session.commit()
+        flash("Subscription updated successfully!" if existing_subscription else "Subscription successful!", "success")
+        return redirect(url_for('index'))
+    return render_template("notify_input.html")
+
+@app.route('/trigger', methods=['GET'])
+def trigger():
+    users = EmailSubscription.query.filter_by(email_notification="yes").all()
+    print("list of users",users)
+    for user in users:
+        calendar_type = user.calendar_type
+        try:
+            cal = HinduCalendar(method=calendar_type, city='auto', regional_language=False)
+            today_date = datetime.today().strftime('%d/%m/%Y')
+            a, b = cal.get_date(date=today_date, regional=False)
+            b = json.loads(b)
+            data = {
+                "English Date": b.get("ce_datestring", "N/A"),
+                "Regional Date": b.get("regional_date", "N/A"),
+                "Event": b.get("event", "N/A"),
+                "Regional Date String": b.get("regional_datestring", "N/A"),
+                "Panchang": b.get("panchang", "N/A"),
+                "calendar_type": calendar_type
+            }
+            gen_ai = generate("Amalaki Ekadashi")
+            json_data = json.loads(gen_ai)
+            template = Template(html_template_2)
+            html_body = template.render(data=json_data, calendar_data=data, event=data['Event'])
+            if data.get('Event') not in [None, "N/A", ""]:
+                send_email(user.email, html_body)
+            else:
+                send_email(user.email, html_body)
+                print("No event found for",today_date)
+        except Exception as e:
+            print(f"❌ Error sending email to {user.email}: {e}")
+    return 'done',200
+
+@app.route("/success")
+def success():
+    flash('Thank you for subscribing! 🎉', 'success')
+    return redirect(url_for('index'))
+
+@app.route("/about")
+def about():
+    flash('A Python Flask Website 🎉! Made With Love ❤️', 'success')
+    return redirect(url_for('index'))
+
+@app.route('/manage', methods=['GET', 'POST'])
+def manage_subscription():
+    if request.method == 'POST':
+        email = request.form['email']
+        subscription = EmailSubscription.query.filter_by(email=email).first()
+        if subscription:
+            return redirect(url_for('edit_subscription', subscription_id=subscription.id))
+        else:
+            return 'Email not found. Please try again.'
+    return render_template('manage.html')
+
+@app.route('/edit/<int:subscription_id>', methods=['GET', 'POST'])
+def edit_subscription(subscription_id):
+    subscription = EmailSubscription.query.get_or_404(subscription_id)
+    if request.method == 'POST':
+        subscription.calendar_type = request.form['calendarType']
+        subscription.email_notification = request.form['email_notification']
+        db.session.commit()
+        flash('Subscription updated successfully!', 'success')
+        return redirect(url_for('index')) 
+    return render_template('edit_subscription.html', subscription=subscription)
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000,debug=True)
