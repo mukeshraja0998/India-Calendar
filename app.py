@@ -168,11 +168,12 @@ def trigger():
                 "Panchang": b.get("panchang", "N/A"),
                 "calendar_type": calendar_type
             }
-            gen_ai = generate("Amalaki Ekadashi")
-            json_data = json.loads(gen_ai)
-            template = Template(html_template_2)
-            html_body = template.render(data=json_data, calendar_data=data, event=data['Event'])
             if data.get('Event') not in [None, "N/A", ""]:
+                event=data['Event']
+                gen_ai = generate(event)
+                json_data = json.loads(gen_ai)
+                template = Template(html_template_2)
+                html_body = template.render(data=json_data, calendar_data=data, event=event)
                 send_email(user.email, html_body)
             else:
                 print("No event found for",today_date)
