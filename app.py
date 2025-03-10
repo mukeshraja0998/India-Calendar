@@ -15,6 +15,7 @@ from google.genai import types
 from dotenv import load_dotenv
 from flask_migrate import Migrate
 import pytz
+import threading
 
 load_dotenv()
 IST = pytz.timezone("Asia/Kolkata")
@@ -38,11 +39,14 @@ class EmailSubscription(db.Model):
     calendar_type = db.Column(db.String(100), nullable=False)
     email_notification = db.Column(db.String(3), nullable=False, default='yes')
 
+def get_ist_now():
+    return datetime.now(pytz.utc).astimezone(IST)
+
 def send_email(TO_EMAIL,html_body):
     EMAIL_ADDRESS = os.getenv("GMAIL_APP_USERNAME")
     APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
     #current_date = datetime.now().strftime("%B %d, %Y")
-    current_date = datetime.now(pytz.utc).astimezone(IST).strftime("%B %d, %Y")
+    current_date = get_ist_now().strftime("%B %d, %Y")
     msg = MIMEMultipart()
     msg["Subject"] = f"Calendar - notification ({current_date})"
     msg["From"] = EMAIL_ADDRESS
@@ -61,7 +65,7 @@ def send_email(TO_EMAIL,html_body):
 def generate(event,calendar_type="Tamil"):
     client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
     model = "gemini-2.0-flash"
-    print("calendar_type",calendar_type)
+    #print("calendar_type",calendar_type)
     json_format = {
         f"quote": {
             calendar_type: "Error in event",
@@ -101,7 +105,7 @@ def get_panchang():
     except ValueError:
         return "<h3>Invalid date format. Please use YYYY-MM-DD.</h3>"
     calendar_type = request.form.get('calendarType')
-    cal = HinduCalendar(method=calendar_type, city='auto', regional_language=False)
+    cal = HinduCalendar(method=calendar_type, city='Chennai', regional_language=False)
     a,b=cal.get_date(date=formatted_date, regional=False)
     try:
         b = json.loads(b)
@@ -142,15 +146,14 @@ def addnew():
         return redirect(url_for('index'))
     return render_template("notify_input.html")
 
-@app.route('/trigger', methods=['GET'])
-def trigger():
-    users = EmailSubscription.query.filter_by(email_notification="yes").all()
-    print("list of users",users)
+def background_task(users):
+    """Function to handle email sending in the background."""
     for user in users:
         calendar_type = user.calendar_type
         try:
             cal = HinduCalendar(method=calendar_type, city='auto', regional_language=False)
-            today_date = datetime.today().strftime('%d/%m/%Y')
+            #today_date = datetime.today().strftime('%d/%m/%Y')
+            today_date = get_ist_now().strftime('%d/%m/%Y')
             a, b = cal.get_date(date=today_date, regional=False)
             b = json.loads(b)
             data = {
@@ -162,17 +165,23 @@ def trigger():
                 "calendar_type": calendar_type
             }
             if data.get('Event') not in [None, "N/A", ""]:
-                event=data['Event']
-                gen_ai = generate(event,calendar_type)
+                event = data['Event']
+                gen_ai = generate(event, calendar_type)
                 json_data = json.loads(gen_ai)
                 template = Template(html_template_2)
                 html_body = template.render(data=json_data, calendar_data=data, event=event)
                 send_email(user.email, html_body)
             else:
-                print("No event found for",today_date)
+                print("No event found for", today_date)
         except Exception as e:
             print(f"❌ Error sending email to {user.email}: {e}")
-    return 'done',200
+            
+@app.route('/trigger', methods=['GET'])
+def trigger():
+    users = EmailSubscription.query.filter_by(email_notification="yes").all()
+    thread = threading.Thread(target=background_task, args=(users,))
+    thread.start()
+    return 'Processing started', 200 
 
 @app.route("/about")
 def about():

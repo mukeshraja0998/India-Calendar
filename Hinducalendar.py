@@ -244,7 +244,6 @@ class HinduCalendar():
         date_json = json.dumps(date_object, indent=4, ensure_ascii=False)
         decoded_json = json.loads(date_json)
         a=json.dumps(decoded_json, indent=4, ensure_ascii=False)
-        print(a)
         return date_object,a
 
     def get_regional_lists(self):
