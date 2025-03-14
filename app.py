@@ -181,7 +181,29 @@ def trigger():
     users = EmailSubscription.query.filter_by(email_notification="yes").all()
     thread = threading.Thread(target=background_task, args=(users,))
     thread.start()
-    return 'Processing started', 200 
+    return 'Processing started', 200
+
+@app.route('/check', methods=['GET'])
+def check():
+    
+    cal = HinduCalendar(method="tamil", city='auto', regional_language=False)
+    #today_date = datetime.today().strftime('%d/%m/%Y')
+    today_date = get_ist_now().strftime('%d/%m/%Y')
+    a, b = cal.get_date(date=today_date, regional=False)
+    b = json.loads(b)
+    data = {
+        "English Date": b.get("ce_datestring", "N/A"),
+        "Regional Date": b.get("regional_date", "N/A"),
+        "Event": b.get("event", "N/A"),
+        "Regional Date String": b.get("regional_datestring", "N/A"),
+        "Panchang": b.get("panchang", "N/A"),
+        "calendar_type": "tamil"
+    }
+    event = data['Event']
+    gen_ai = generate(event, "tamil")
+    json_data = json.loads(gen_ai)
+    #print(data)
+    return render_template('trigger.html', data=json_data, calendar_data=data, event=event)
 
 @app.route("/about")
 def about():

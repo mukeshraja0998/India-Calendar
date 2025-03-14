@@ -1,127 +1,138 @@
 <!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Panchang Calendar</title>
-        <!-- Bootstrap CSS -->
-        <link
-            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-            rel="stylesheet">
-        <style>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panchang Calendar</title>
+    <style>
         body {
-            background-color: #f8f9fa;
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
         }
-        .navbar {
-            background: linear-gradient(to right, #2c3e50, #4ca1af);
+        .email-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #ffffff;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
         }
-        .navbar-brand, .nav-link {
-            color: white !important;
+        .header {
+            background: linear-gradient(135deg, #4ca1af, #2c3e50);
+            padding: 20px;
+            text-align: center;
+            color: white;
+            font-size: 24px;
             font-weight: bold;
         }
-        .card {
-            border-radius: 15px;
-            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
-            background: linear-gradient(to right, #ff9a9e, #fad0c4);
+        .content {
+            padding: 25px;
+            color: #333;
+        }
+        .content h2 {
+            text-align: center;
+            color: #2c3e50;
+            font-size: 22px;
+        }
+        .details {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        .details p {
+            margin: 8px 0;
+            font-size: 16px;
+        }
+        .highlight {
+            font-weight: bold;
             color: #2c3e50;
         }
-        .card-title {
-            font-size: 1.5rem;
-            font-weight: bold;
+        .panchang-section {
+            background: linear-gradient(135deg, #ff9a9e, #fad0c4);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            color: #2c3e50;
         }
-        .list-group-item {
-            background: transparent;
-            border: none;
-            font-size: 1.1rem;
+        .panchang-section h3 {
+            text-align: center;
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        .panchang-section ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .panchang-section li {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            justify-content: space-between;
+        }
+        .panchang-section li:last-child {
+            border-bottom: none;
         }
         .footer {
-            color: rgb(84, 211, 45);
             text-align: center;
-            padding: 10px 0;
-            margin-top: 30px;
+            padding: 15px;
+            font-size: 14px;
+            color: #555;
+            background: #f1f1f1;
+            border-top: 1px solid #ddd;
         }
     </style>
-    </head>
-    <body>
+</head>
+<body>
 
-        <div class="container mt-4">
-            <div class="row justify-content-center">
-                <div class="col-md-8">
-                    <div class="card p-4">
-                        <h2 class="card-title text-center mb-4">Panchang
-                            Details</h2>
-                        <h3 class="text-center">✨ Event Details: {{ event
-                            }}</h3>
-                        <div class="list-group">
-                            <div
-                                class="list-group-item d-flex justify-content-between">
-                                <strong>Quote: </strong> <span>{{
-                                    data['quote']['tamil'] }}</span>                  
-                            </div>
-                            <div
-                                class="list-group-item d-flex justify-content-between">
-                                <strong>Quote: </strong> <span>{{
-                                    data['quote']['english'] }}</span>
-                            </div>
-                        </div>
-                        <hr>
-                        <h4 class="text-center">🌞 Morning Wish</h4>
-                        <div class="list-group">
-                            <div
-                                class="list-group-item d-flex justify-content-between">
-                                <strong>Wish:</strong> <span>{{
-                                    data['morning_wish'] }}</span>
-                            </div>
-                        </div>
-
-                        <div class="list-group">
-                            <div
-                                class="list-group-item d-flex justify-content-between">
-                                <strong>📆 English Date:</strong> <span>{{
-                                    calendar_data['English Date'] }}</span>
-                            </div>
-                            <div
-                                class="list-group-item d-flex justify-content-between">
-                                <strong>🗓️ Regional Date:</strong> <span>{{
-                                    calendar_data['Regional Date String']
-                                    }}</span>
-                            </div>
-                            <div
-                                class="list-group-item d-flex justify-content-between">
-                                <strong>🌍 Event:</strong> <span>{{
-                                    calendar_data['Event'] }}</span>
-                            </div>
-                        </div>
-                        <hr>
-                        <h4 class="text-center mt-3">🕉️ Panchang Details</h4>
-                        {% if calendar_data['Panchang'] != 'N/A' %}
-                        <ul class="list-group">
-                            {% for key, value in
-                            calendar_data['Panchang'].items() %}
-                            <li
-                                class="list-group-item d-flex justify-content-between">
-                                <strong>{{ key }}</strong> <span>{{ value
-                                    }}</span>
-                            </li>
-                            {% endfor %}
-                        </ul>
-                        {% else %}
-                        <p>No Panchang data available.</p>
-                        {% endif %}
-
-                    </div>
-                </div>
+    <div class="email-container">
+        <div class="header">
+            🌞 Panchang Calendar - {{ calendar_data['English Date'] }}
+        </div>
+        
+        <div class="content">
+            <h2>✨ Today Event : {{ calendar_data['Event'] }}</h2>
+            
+            <div class="details">
+                <p><span class="highlight">📜 Event Quote:</span> {{ data['quote']['tamil'] }}</p>
+                <p><span class="highlight">📜 Event Quote:</span> {{ data['quote']['english'] }}</p>
             </div>
+            
+            <div class="details">
+                <p><span class="highlight">🌞 Morning Wish:</span> {{ data['morning_wish'] }}</p>
+            </div>
+
+            <div class="details">
+                <p><span class="highlight">📆 English Date:</span> {{ calendar_data['English Date'] }}</p>
+                <p><span class="highlight">🗓️ Regional Date:</span> {{ calendar_data['Regional Date String'] }}</p>
+                <p><span class="highlight">🌍 Event:</span> {{ calendar_data['Event'] }}</p>
+            </div>
+
+            {% if calendar_data['Panchang'] != 'N/A' %}
+            <div class="panchang-section">
+                <h3>🕉️ Panchang Details</h3>
+                <ul>
+                    {% for key, value in calendar_data['Panchang'].items() %}
+                    <li>
+                        <span class="highlight">{{ key }}</span>
+                        <span>{{ value }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% else %}
+            <p>No Panchang data available.</p>
+            {% endif %}
         </div>
 
-        <!-- Footer -->
         <div class="footer">
-            <p>Made with ❤️ By Mukesh</p>
+            <p>📅 Stay connected with the cosmic energies & plan your day wisely!</p>
+            <p>🔗 <a href="https://india-calendar.onrender.com/" style="color: #2c3e50; text-decoration: none; font-weight: bold;">Visit Our Calendar</a> | ✨ <a href="mailto:support@yourwebsite.com" style="color: #2c3e50; text-decoration: none; font-weight: bold;"></a></p>
+            <p>© 2025 India Calendar. All rights reserved.</p>
         </div>
-
-
-        <!-- Bootstrap JS -->
-        <script
-            src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    </body>
+        
+    </div>
+</body>
 </html>
