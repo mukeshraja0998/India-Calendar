@@ -105,8 +105,8 @@ class HinduCalendar():
 
         }
     }
-    def __init__(self, method='marathi', city='auto',
-                 regional_language=False, geonames_id=None,
+    def __init__(self, method='tamil', city='chennai',
+                 regional_language=False, geonames_id="1261481",
                  storage_dir=None):
         self._session = requests.Session()
         self.method = None
