@@ -2,7 +2,6 @@ import re, json,os,smtplib,requests
 from datetime import datetime as dt
 from urllib.parse import urlparse
 from flask import Flask, request, jsonify, render_template, Response, flash, redirect, url_for
-from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -16,28 +15,24 @@ from dotenv import load_dotenv
 from flask_migrate import Migrate
 import pytz
 import threading
+from flask_pymongo import PyMongo
+from bson.objectid import ObjectId
+
 
 load_dotenv()
 IST = pytz.timezone("Asia/Kolkata")
 
 app = Flask(__name__)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DB_EXTERNAL")
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
-
-with app.app_context():
-    db.create_all()
+mongo_uri = os.getenv("MONGO_URI")
+print(f"Loaded MONGO_URI: {mongo_uri}")
+app.config["MONGO_URI"] = mongo_uri
+mongo = PyMongo()
+mongo.init_app(app)
 
 app.config['SECRET_KEY'] = 'Flask-Calendar-App'
 
-class EmailSubscription(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)  # Add Name Column
-    email = db.Column(db.String(100), unique=True, nullable=False)
-    calendar_type = db.Column(db.String(100), nullable=False)
-    email_notification = db.Column(db.String(3), nullable=False, default='yes')
+#mongo = PyMongo(app)
+db = mongo.cx.get_database("mydatabase")
 
 def get_ist_now():
     return datetime.now(pytz.utc).astimezone(IST)
@@ -85,11 +80,10 @@ def generate(event,calendar_type="Tamil"):
         print("Raw response:")
         print(response.text)
 
-with app.app_context():
-    db.create_all()
     
 @app.route('/health', methods=['GET'])
 def health():
+    print("MONGO_URI:", os.getenv("MONGO_URI"))
     return jsonify({"message": "Flask app with PostgreSQL is running!"})
 
 @app.route('/', methods=['GET'])
@@ -128,31 +122,37 @@ def addnew():
         email = request.form.get('email')
         calendar_type = request.form.get('calendarType')
         email_notification = request.form.get('email_notification')
-        existing_subscription = EmailSubscription.query.filter_by(email=email).first()
-        if existing_subscription:
-            existing_subscription.name = name
-            existing_subscription.calendar_type = calendar_type
-            existing_subscription.email_notification = email_notification
-        else:
-            new_subscription = EmailSubscription(
-                name=name,
-                email=email,
-                calendar_type=calendar_type,
-                email_notification=email_notification
+
+        existing = mongo.db.subscriptions.find_one({'email': email})
+        if existing:
+            mongo.db.subscriptions.update_one(
+                {'email': email},
+                {'$set': {
+                    'name': name,
+                    'calendar_type': calendar_type,
+                    'email_notification': email_notification
+                }}
             )
-            db.session.add(new_subscription)
-        db.session.commit()
-        flash("Subscription updated successfully!" if existing_subscription else "Subscription successful!", "success")
+            flash("Subscription updated successfully!", "success")
+        else:
+            mongo.db.subscriptions.insert_one({
+                'name': name,
+                'email': email,
+                'calendar_type': calendar_type,
+                'email_notification': email_notification,
+                'created_at': datetime.utcnow()
+            })
+            flash("Subscription successful!", "success")
+
         return redirect(url_for('index'))
+    
     return render_template("notify_input.html")
 
 def background_task(users):
-    """Function to handle email sending in the background."""
     for user in users:
-        calendar_type = user.calendar_type
+        calendar_type = user['calendar_type']
         try:
             cal = HinduCalendar(method=calendar_type, city='auto', regional_language=False)
-            #today_date = datetime.today().strftime('%d/%m/%Y')
             today_date = get_ist_now().strftime('%d/%m/%Y')
             a, b = cal.get_date(date=today_date, regional=False)
             b = json.loads(b)
@@ -170,18 +170,26 @@ def background_task(users):
                 json_data = json.loads(gen_ai)
                 template = Template(html_template_2)
                 html_body = template.render(data=json_data, calendar_data=data, event=event)
-                send_email(user.email, html_body)
+                send_email(user['email'], html_body)
             else:
                 print("No event found for", today_date)
         except Exception as e:
-            print(f"❌ Error sending email to {user.email}: {e}")
+            print(f"❌ Error sending email to {user['email']}: {e}")
+
             
 @app.route('/trigger', methods=['GET'])
 def trigger():
-    users = EmailSubscription.query.filter_by(email_notification="yes").all()
-    thread = threading.Thread(target=background_task, args=(users,))
-    thread.start()
-    return 'Processing started', 200
+    try:
+        users = list(mongo.db.subscriptions.find({"email_notification": "yes"}))
+        if not users:
+            return 'No users with notifications enabled.', 200
+        thread = threading.Thread(target=background_task, args=(users,))
+        thread.start()
+        return 'Processing started', 200
+    except Exception as e:
+        return f"Error occurred: {str(e)}", 500
+
+
 
 @app.route('/check', methods=['GET'])
 def check():
@@ -214,23 +222,40 @@ def about():
 def manage_subscription():
     if request.method == 'POST':
         email = request.form['email']
-        subscription = EmailSubscription.query.filter_by(email=email).first()
-        if subscription:
-            return redirect(url_for('edit_subscription', subscription_id=subscription.id))
+        sub = mongo.db.subscriptions.find_one({'email': email})
+        if sub:
+            return redirect(url_for('edit_subscription', subscription_id=str(sub['_id'])))
         else:
             return 'Email not found. Please try again.'
     return render_template('manage.html')
 
-@app.route('/edit/<int:subscription_id>', methods=['GET', 'POST'])
+
+@app.route('/edit/<string:subscription_id>', methods=['GET', 'POST'])
 def edit_subscription(subscription_id):
-    subscription = EmailSubscription.query.get_or_404(subscription_id)
+    sub = mongo.db.subscriptions.find_one({'_id': ObjectId(subscription_id)})
+    if not sub:
+        return "Subscription not found", 404
+
     if request.method == 'POST':
-        subscription.calendar_type = request.form['calendarType']
-        subscription.email_notification = request.form['email_notification']
-        db.session.commit()
+        mongo.db.subscriptions.update_one(
+            {'_id': ObjectId(subscription_id)},
+            {'$set': {
+                'calendar_type': request.form['calendarType'],
+                'email_notification': request.form['email_notification']
+            }}
+        )
         flash('Subscription updated successfully!', 'success')
-        return redirect(url_for('index')) 
-    return render_template('edit_subscription.html', subscription=subscription)
+        return redirect(url_for('index'))
+
+    return render_template('edit_subscription.html', subscription=sub)
+
+@app.route('/check_mongo')
+def check_mongo():
+    try:
+        db.test.insert_one({"msg": "Hello from Flask & MongoDB!"})
+        return "MongoDB is connected!"
+    except Exception as e:
+        return f"MongoDB connection failed: {e}"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000,debug=True)

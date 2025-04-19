@@ -12,3 +12,4 @@ python-dotenv
 google-genai
 google-auth
 flask-migrate
+flask-pymongo
