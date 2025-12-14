@@ -15,7 +15,8 @@ from dotenv import load_dotenv
 from flask_migrate import Migrate
 import pytz
 import threading
-#from flask_pymongo import PyMongo
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
 from bson.objectid import ObjectId
 
 
@@ -25,14 +26,21 @@ IST = pytz.timezone("Asia/Kolkata")
 app = Flask(__name__)
 mongo_uri = os.getenv("MONGO_URI")
 print(f"Loaded MONGO_URI: {mongo_uri}")
-#app.config["MONGO_URI"] = mongo_uri
-#mongo = PyMongo()
-#mongo.init_app(app)
+app.config["MONGO_URI"] = mongo_uri
+
+# Initialize PyMongo client using the URI from .env
+try:
+    client = MongoClient(mongo_uri, server_api=ServerApi('1'))
+    client.admin.command('ping')
+    print("Pinged your deployment. You successfully connected to MongoDB!")
+except Exception as e:
+    print(f"MongoDB connection failed: {e}")
+    client = None
 
 app.config['SECRET_KEY'] = 'Flask-Calendar-App'
 
-#mongo = PyMongo(app)
-#db = mongo.cx.get_database("mydatabase")
+# Use the database named 'mydatabase'
+db = client.get_database("mydatabase") if client else None
 
 def get_ist_now():
     return datetime.now(pytz.utc).astimezone(IST)
@@ -58,8 +66,12 @@ def send_email(TO_EMAIL,html_body):
         print(f"❌ Error: {e}")
 
 def generate(event,calendar_type="Tamil"):
-    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-    model = "gemini-2.0-flash"
+    api_key = os.environ.get("GEMINI_API_KEY")
+    # Initialize GenAI client using keyword argument (Client expects keyword-only args)
+    client = genai.Client(api_key=api_key)
+    # Don't log the API key — log the event being generated for instead
+    print("Generating content for event:", api_key)
+    model = "gemini-2.5-flash"
     #print("calendar_type",calendar_type)
     json_format = {
         f"quote": {
@@ -68,17 +80,19 @@ def generate(event,calendar_type="Tamil"):
         },
         "morning_wish": "Error in event"
     }
-    response = client.models.generate_content(
+    try:
+        response = client.models.generate_content(
             model=model,
             contents=f"Provide a beautiful one quote in {calendar_type} and english for '{event}' in one line with morning wish in json format if any error in event just generate only morning wish json format will be '{json_format}'"
         )
-    try:
-        cleaned_response = response.text.replace("```json", "").replace("```", "").strip()
+        # Some client responses contain `.text`, others may provide structured data.
+        raw = getattr(response, 'text', None) or str(response)
+        cleaned_response = raw.replace("```json", "").replace("```", "").strip()
         return cleaned_response
-    except json.JSONDecodeError:
-        print("Response is not valid JSON.")
-        print("Raw response:")
-        print(response.text)
+    except Exception as e:
+        print(f"GenAI generation error: {e}")
+        # Return fallback JSON string so callers can safely json.loads() it
+        return json.dumps(json_format)
 
     
 @app.route('/health', methods=['GET'])
@@ -117,15 +131,18 @@ def get_panchang():
 
 @app.route('/add-new', methods=['GET', 'POST'])
 def addnew():
+    if db is None:
+        return "Database not connected. Please check MONGO_URI.", 500
+
     if request.method == 'POST':
         name = request.form.get('name')
         email = request.form.get('email')
         calendar_type = request.form.get('calendarType')
         email_notification = request.form.get('email_notification')
 
-        existing = mongo.db.subscriptions.find_one({'email': email})
+        existing = db.subscriptions.find_one({'email': email})
         if existing:
-            mongo.db.subscriptions.update_one(
+            db.subscriptions.update_one(
                 {'email': email},
                 {'$set': {
                     'name': name,
@@ -135,7 +152,7 @@ def addnew():
             )
             flash("Subscription updated successfully!", "success")
         else:
-            mongo.db.subscriptions.insert_one({
+            db.subscriptions.insert_one({
                 'name': name,
                 'email': email,
                 'calendar_type': calendar_type,
@@ -167,6 +184,8 @@ def background_task(users):
             if data.get('Event') not in [None, "N/A", ""]:
                 event = data['Event']
                 gen_ai = generate(event, calendar_type)
+                print("Generated AI content for", user['email'])
+                print("gen_ai:", gen_ai)
                 json_data = json.loads(gen_ai)
                 template = Template(html_template_2)
                 html_body = template.render(data=json_data, calendar_data=data, event=event)
@@ -180,7 +199,9 @@ def background_task(users):
 @app.route('/trigger', methods=['GET'])
 def trigger():
     try:
-        users = list(mongo.db.subscriptions.find({"email_notification": "yes"}))
+        if db is None:
+            return "Database not connected. Please check MONGO_URI.", 500
+        users = list(db.subscriptions.find({"email_notification": "yes"}))
         if not users:
             return 'No users with notifications enabled.', 200
         thread = threading.Thread(target=background_task, args=(users,))
@@ -222,7 +243,9 @@ def about():
 def manage_subscription():
     if request.method == 'POST':
         email = request.form['email']
-        sub = mongo.db.subscriptions.find_one({'email': email})
+        if db is None:
+            return "Database not connected. Please check MONGO_URI.", 500
+        sub = db.subscriptions.find_one({'email': email})
         if sub:
             return redirect(url_for('edit_subscription', subscription_id=str(sub['_id'])))
         else:
@@ -232,12 +255,14 @@ def manage_subscription():
 
 @app.route('/edit/<string:subscription_id>', methods=['GET', 'POST'])
 def edit_subscription(subscription_id):
-    sub = mongo.db.subscriptions.find_one({'_id': ObjectId(subscription_id)})
+    if db is None:
+        return "Database not connected. Please check MONGO_URI.", 500
+    sub = db.subscriptions.find_one({'_id': ObjectId(subscription_id)})
     if not sub:
         return "Subscription not found", 404
 
     if request.method == 'POST':
-        mongo.db.subscriptions.update_one(
+        db.subscriptions.update_one(
             {'_id': ObjectId(subscription_id)},
             {'$set': {
                 'calendar_type': request.form['calendarType'],
@@ -252,10 +277,12 @@ def edit_subscription(subscription_id):
 @app.route('/check_mongo')
 def check_mongo():
     try:
+        if db is None:
+            return "Database not connected. Please check MONGO_URI.", 500
         db.test.insert_one({"msg": "Hello from Flask & MongoDB!"})
         return "MongoDB is connected!"
     except Exception as e:
         return f"MongoDB connection failed: {e}"
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000,debug=True)
+    app.run(host="0.0.0.0", port=5000)

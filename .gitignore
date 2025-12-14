@@ -5,3 +5,8 @@ migrations/
 *.pyc
 *.pyo
 venv
+myenv/
+env/
+*.sqlite3
+instance/
+.DS_Store
