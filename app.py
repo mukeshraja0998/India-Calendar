@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from flask_migrate import Migrate
 import pytz
 import threading
+import hashlib
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from bson.objectid import ObjectId
@@ -41,6 +42,18 @@ app.config['SECRET_KEY'] = 'Flask-Calendar-App'
 
 # Use the database named 'mydatabase'
 db = client.get_database("mydatabase") if client else None
+
+# Ensure AI cache collection has useful indexes (unique key + TTL)
+if db is not None:
+    try:
+        ttl_days = int(os.getenv("MONGO_AI_CACHE_TTL_DAYS", "7"))
+        ttl_seconds = ttl_days * 24 * 3600
+        # unique cache key index
+        db.ai_cache.create_index("cache_key", unique=True)
+        # TTL index on created_at to expire old cached responses
+        db.ai_cache.create_index("created_at", expireAfterSeconds=ttl_seconds)
+    except Exception as e:
+        print(f"Warning: failed to ensure ai_cache indexes: {e}")
 
 def get_ist_now():
     return datetime.now(pytz.utc).astimezone(IST)
@@ -70,8 +83,8 @@ def generate(event,calendar_type="Tamil"):
     # Initialize GenAI client using keyword argument (Client expects keyword-only args)
     client = genai.Client(api_key=api_key)
     # Don't log the API key — log the event being generated for instead
-    print("Generating content for event:", api_key)
-    model = "gemini-2.5-flash"
+    print("Generating content for event:", event)
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     #print("calendar_type",calendar_type)
     json_format = {
         f"quote": {
@@ -80,6 +93,21 @@ def generate(event,calendar_type="Tamil"):
         },
         "morning_wish": "Error in event"
     }
+    # Normalize and compute cache key
+    normalized = f"{calendar_type}|{event.strip()}".lower()
+    cache_key = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+    # Try cache lookup (if DB is available)
+    if db is not None:
+        try:
+            cached = db.ai_cache.find_one({"cache_key": cache_key})
+            if cached and cached.get("response"):
+                # Return cached response (string)
+                print(f"Using cached GenAI response for key={cache_key}")
+                return cached["response"]
+        except Exception as e:
+            print(f"Warning: cache lookup failed: {e}")
+
     try:
         response = client.models.generate_content(
             model=model,
@@ -88,6 +116,21 @@ def generate(event,calendar_type="Tamil"):
         # Some client responses contain `.text`, others may provide structured data.
         raw = getattr(response, 'text', None) or str(response)
         cleaned_response = raw.replace("```json", "").replace("```", "").strip()
+
+        # Save to cache (best-effort)
+        if db is not None:
+            try:
+                doc = {
+                    "cache_key": cache_key,
+                    "calendar_type": calendar_type,
+                    "event": event,
+                    "response": cleaned_response,
+                    "created_at": datetime.utcnow()
+                }
+                # upsert to avoid duplicate key errors
+                db.ai_cache.update_one({"cache_key": cache_key}, {"$set": doc}, upsert=True)
+            except Exception as e:
+                print(f"Warning: failed to save GenAI response to cache: {e}")
         return cleaned_response
     except Exception as e:
         print(f"GenAI generation error: {e}")
