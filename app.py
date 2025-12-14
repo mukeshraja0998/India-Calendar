@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from flask_migrate import Migrate
 import pytz
 import threading
-from flask_pymongo import PyMongo
+#from flask_pymongo import PyMongo
 from bson.objectid import ObjectId
 
 
@@ -25,14 +25,14 @@ IST = pytz.timezone("Asia/Kolkata")
 app = Flask(__name__)
 mongo_uri = os.getenv("MONGO_URI")
 print(f"Loaded MONGO_URI: {mongo_uri}")
-app.config["MONGO_URI"] = mongo_uri
-mongo = PyMongo()
-mongo.init_app(app)
+#app.config["MONGO_URI"] = mongo_uri
+#mongo = PyMongo()
+#mongo.init_app(app)
 
 app.config['SECRET_KEY'] = 'Flask-Calendar-App'
 
 #mongo = PyMongo(app)
-db = mongo.cx.get_database("mydatabase")
+#db = mongo.cx.get_database("mydatabase")
 
 def get_ist_now():
     return datetime.now(pytz.utc).astimezone(IST)
