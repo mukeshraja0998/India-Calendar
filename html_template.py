@@ -196,17 +196,7 @@ html_template_2 = """
         
         <div class="content">
             <h2>✨ Today Event : {{ calendar_data['Event'] }}</h2>
-            
-            <div class="details">
-                <p><span class="highlight">📜 Event Quote:</span> {{ data['quote']['tamil'] }}</p>
-                <p><span class="highlight">📜 Event Quote:</span> {{ data['quote']['english'] }}</p>
-            </div>
-            
-            <div class="details">
-                <p><span class="highlight">🌞 Morning Wish:</span> {{ data['morning_wish'] }}</p>
-            </div>
-
-            <div class="details">
+                        <div class="details">
                 <p><span class="highlight">📆 English Date:</span> {{ calendar_data['English Date'] }}</p>
                 <p><span class="highlight">🗓️ Regional Date:</span> {{ calendar_data['Regional Date String'] }}</p>
                 <p><span class="highlight">🌍 Event:</span> {{ calendar_data['Event'] }}</p>

@@ -11,7 +11,6 @@ from email.mime.image import MIMEImage
 from html_template import html_template_2
 from Hinducalendar import HinduCalendar
 from jinja2 import Template
-from google import genai
 from dotenv import load_dotenv
 import pytz
 import threading
@@ -77,29 +76,6 @@ def send_email(TO_EMAIL,html_body, attachment_tuple=None):
         print("✅ Email sent successfully!")
     except Exception as e:
         print(f"❌ Error: {e}")
-
-def generate(event,calendar_type="Tamil"):
-    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-    model = "gemini-2.0-flash"
-    #print("calendar_type",calendar_type)
-    json_format = {
-        f"quote": {
-            calendar_type: "Error in event",
-            "english": "Error in event"
-        },
-        "morning_wish": "Error in event"
-    }
-    response = client.models.generate_content(
-            model=model,
-            contents=f"Provide a beautiful one quote in {calendar_type} and english for '{event}' in one line with morning wish in json format if any error in event just generate only morning wish json format will be '{json_format}'"
-        )
-    try:
-        cleaned_response = response.text.replace("```json", "").replace("```", "").strip()
-        return cleaned_response
-    except json.JSONDecodeError:
-        print("Response is not valid JSON.")
-        print("Raw response:")
-        print(response.text)
 
 @app.route('/', methods=['GET'])
 @app.route('/home', methods=['GET'])
@@ -230,10 +206,8 @@ def background_task(users):
             }
             if data.get('Event') not in [None, "N/A", ""]:
                 event = data['Event']
-                gen_ai = generate(event, calendar_type)
-                json_data = json.loads(gen_ai)
                 template = Template(html_template_2)
-                html_body = template.render(data=json_data, calendar_data=data, event=event)
+                html_body = template.render(calendar_data=data, event=event)
                 
                 attachment = None
                 if calendar_type == "Tamil":

@@ -6,6 +6,5 @@ requests
 psycopg2-binary
 flask_sqlalchemy
 python-dotenv
-google-genai
 apscheduler
 pytz
