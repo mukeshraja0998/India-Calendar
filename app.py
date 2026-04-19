@@ -19,6 +19,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 load_dotenv()
 IST = pytz.timezone("Asia/Kolkata")
+APP_PORT = int(os.environ.get("PORT", 5001))
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'Flask-Calendar-App'
@@ -313,7 +314,7 @@ def start_cloudflared():
     stop_cloudflared()
     try:
         cloudflared_process = subprocess.Popen(
-            ['cloudflared', 'tunnel', '--url', 'http://localhost:5000'],
+            ['cloudflared', 'tunnel', '--url', f'http://localhost:{APP_PORT}'],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -410,4 +411,4 @@ if __name__ == "__main__":
         cf_monitor_t = threading.Thread(target=monitor_cloudflared, daemon=True)
         cf_monitor_t.start()
         
-    app.run(host="0.0.0.0", port=5000,debug=True)
+    app.run(host="0.0.0.0", port=APP_PORT,debug=True)
