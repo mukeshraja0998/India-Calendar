@@ -305,7 +305,7 @@ def stop_cloudflared():
         except Exception:
             pass
     try:
-        subprocess.run(['pkill', 'cloudflared'], stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', '-f', f'cloudflared tunnel --url http://localhost:{APP_PORT}'], stderr=subprocess.DEVNULL)
     except:
         pass
 
