@@ -1,0 +1,137 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-lg-8 col-md-10">
+        <div class="card p-4 shadow-sm mb-4">
+            <h2 class="text-center mb-4" style="color: var(--primary-color);">Classic Tamil Calendar</h2>
+            
+            <ul class="nav nav-pills nav-fill mb-4" id="calendarTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active fw-bold" id="daily-tab" data-bs-toggle="tab" data-bs-target="#daily-pane" type="button" role="tab" aria-controls="daily-pane" aria-selected="true">Daily Calendar</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link fw-bold" id="monthly-tab" data-bs-toggle="tab" data-bs-target="#monthly-pane" type="button" role="tab" aria-controls="monthly-pane" aria-selected="false">Monthly Calendar</button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="calendarTabContent">
+                <!-- Daily Calendar Form -->
+                <div class="tab-pane fade show active" id="daily-pane" role="tabpanel" aria-labelledby="daily-tab" tabindex="0">
+                    <form id="dailyForm" class="row g-3 justify-content-center">
+                        <div class="col-sm-8">
+                            <label for="dailyDate" class="form-label fw-bold">Select Date</label>
+                            <input type="date" class="form-control" id="dailyDate" required>
+                        </div>
+                        <div class="col-sm-4 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">Fetch Daily</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Monthly Calendar Form -->
+                <div class="tab-pane fade" id="monthly-pane" role="tabpanel" aria-labelledby="monthly-tab" tabindex="0">
+                    <form id="monthlyForm" class="row g-3 justify-content-center">
+                        <div class="col-sm-8">
+                            <label for="monthlyDate" class="form-label fw-bold">Select Month</label>
+                            <input type="month" class="form-control" id="monthlyDate" required>
+                        </div>
+                        <div class="col-sm-4 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">Fetch Monthly</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Result Container -->
+        <div id="resultContainer" class="card p-3 shadow-sm d-none text-center">
+            <div id="loadingSpinner" class="my-5 d-none">
+                <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3 text-muted">Fetching calendar from tamildailycalendar.com...</p>
+            </div>
+            
+            <div id="errorAlert" class="alert alert-danger d-none" role="alert"></div>
+            
+            <img id="calendarImage" class="img-fluid rounded shadow-sm d-none mx-auto" alt="Classic Tamil Calendar" style="max-height: 800px; object-fit: contain;">
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const dailyForm = document.getElementById("dailyForm");
+    const monthlyForm = document.getElementById("monthlyForm");
+    const resultContainer = document.getElementById("resultContainer");
+    const loadingSpinner = document.getElementById("loadingSpinner");
+    const errorAlert = document.getElementById("errorAlert");
+    const calendarImage = document.getElementById("calendarImage");
+
+    function showLoading() {
+        resultContainer.classList.remove("d-none");
+        loadingSpinner.classList.remove("d-none");
+        errorAlert.classList.add("d-none");
+        calendarImage.classList.add("d-none");
+        calendarImage.src = "";
+    }
+
+    function showError(message) {
+        loadingSpinner.classList.add("d-none");
+        errorAlert.textContent = message;
+        errorAlert.classList.remove("d-none");
+    }
+
+    function showImage(url) {
+        // We use fetch to check if the proxy returns a valid image or JSON error
+        fetch(url)
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => { throw new Error(err.error || "Image not found."); });
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                const objectURL = URL.createObjectURL(blob);
+                calendarImage.src = objectURL;
+                loadingSpinner.classList.add("d-none");
+                calendarImage.classList.remove("d-none");
+            })
+            .catch(error => {
+                showError(error.message);
+            });
+    }
+
+    dailyForm.addEventListener("submit", function(e) {
+        e.preventDefault();
+        const dateVal = document.getElementById("dailyDate").value;
+        if (!dateVal) return;
+        
+        showLoading();
+        const dateObj = new Date(dateVal);
+        const day = String(dateObj.getDate()); // Unpadded
+        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const year = String(dateObj.getFullYear());
+
+        const url = `/api/classic_calendar?type=daily&day=${day}&month=${month}&year=${year}`;
+        showImage(url);
+    });
+
+    monthlyForm.addEventListener("submit", function(e) {
+        e.preventDefault();
+        const monthVal = document.getElementById("monthlyDate").value;
+        if (!monthVal) return;
+        
+        showLoading();
+        const parts = monthVal.split("-");
+        const year = parts[0];
+        const month = parts[1]; // Already zero-padded by type="month"
+
+        const url = `/api/classic_calendar?type=monthly&month=${month}&year=${year}`;
+        showImage(url);
+    });
+});
+</script>
+
+{% endblock %}
