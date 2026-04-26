@@ -304,10 +304,6 @@ def stop_cloudflared():
             cloudflared_process.wait(timeout=5)
         except Exception:
             pass
-    try:
-        subprocess.run(['pkill', '-f', f'cloudflared tunnel --url http://localhost:{APP_PORT}'], stderr=subprocess.DEVNULL)
-    except:
-        pass
 
 def start_cloudflared():
     global cloudflared_process
