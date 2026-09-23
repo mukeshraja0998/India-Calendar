@@ -1,6 +1,7 @@
 import json, os, smtplib
 import urllib.request
 import urllib.error
+import urllib.parse
 import subprocess, re, time, sys
 from flask import Flask, request, jsonify, render_template, flash, redirect, url_for, Response
 from flask_sqlalchemy import SQLAlchemy
@@ -24,12 +25,55 @@ APP_PORT = int(os.environ.get("PORT", 5001))
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'Flask-Calendar-App'
 
+db_host = os.getenv("DB_HOST")
 database_url = os.getenv("DATABASE_URL")
+db_configured = False
+
 if database_url:
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    db_configured = True
+elif db_host:
+    db_port = int(os.getenv("DB_PORT", 4000))
+    db_user = os.getenv("DB_USER") or os.getenv("DB_USERNAME", "root")
+    db_pass = os.getenv("DB_PASSWORD", "")
+    db_name = os.getenv("DB_NAME") or os.getenv("DB_DATABASE", "test")
+    db_ssl_ca = os.getenv("DB_SSL_CA", "cert.pem")
+
+    user_enc = urllib.parse.quote_plus(db_user)
+    pass_enc = urllib.parse.quote_plus(db_pass)
+
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"mysql+pymysql://{user_enc}:{pass_enc}@{db_host}:{db_port}/{db_name}"
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+    engine_options = {}
+    if db_ssl_ca:
+        ca_candidate = db_ssl_ca
+        if not os.path.isabs(ca_candidate):
+            candidate_path = os.path.join(app.root_path, ca_candidate)
+            if os.path.exists(candidate_path):
+                ca_candidate = candidate_path
+            elif os.path.exists(os.path.join(app.root_path, "isrgrootx1.pem")):
+                ca_candidate = os.path.join(app.root_path, "isrgrootx1.pem")
+            elif os.path.exists("/etc/ssl/certs/ca-certificates.crt"):
+                ca_candidate = "/etc/ssl/certs/ca-certificates.crt"
+        if os.path.exists(ca_candidate):
+            engine_options["connect_args"] = {
+                "ssl": {
+                    "ca": ca_candidate,
+                    "check_hostname": True
+                }
+            }
+    if engine_options:
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
+    db_configured = True
 else:
-    print("⚠️ DATABASE_URL is not set. Subscription features will be disabled.")
+    # Default fallback to in-memory SQLite to prevent initialization errors when DB is disabled
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    print("⚠️ DATABASE_URL or DB_HOST is not set. Subscription features will be disabled.")
 
 db = SQLAlchemy(app)
 
@@ -41,13 +85,13 @@ class Subscription(db.Model):
     email_notification = db.Column(db.String(10))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-if database_url:
+if db_configured:
     with app.app_context():
         try:
             db.create_all()
-            print("✅ PostgreSQL Database configured and tables created.")
+            print("✅ Database configured and tables created successfully.")
         except Exception as e:
-            print(f"❌ Error configuring PostgreSQL: {e}")
+            print(f"❌ Error configuring database: {e}")
 
 def get_ist_now():
     return datetime.now(pytz.utc).astimezone(IST)
@@ -157,7 +201,7 @@ def get_panchang():
 
 @app.route('/add-new', methods=['GET', 'POST'])
 def addnew():
-    if not os.getenv("DATABASE_URL"):
+    if not db_configured:
         flash("Email subscriptions are currently disabled (Database not configured).", "warning")
         return redirect(url_for('index'))
     if request.method == 'POST':
@@ -232,7 +276,7 @@ def background_task(users):
             
 @app.route('/trigger', methods=['GET'])
 def trigger():
-    if not os.getenv("DATABASE_URL"):
+    if not db_configured:
         return 'Subscriptions are currently disabled (Database not configured).', 503
     try:
         users = Subscription.query.filter_by(email_notification="yes").all()
@@ -252,7 +296,7 @@ def about():
 
 @app.route('/manage', methods=['GET', 'POST'])
 def manage_subscription():
-    if not os.getenv("DATABASE_URL"):
+    if not db_configured:
         flash("Subscription management is currently disabled (Database not configured).", "warning")
         return redirect(url_for('index'))
     if request.method == 'POST':
@@ -267,12 +311,12 @@ def manage_subscription():
 
 @app.route('/edit/<string:subscription_id>', methods=['GET', 'POST'])
 def edit_subscription(subscription_id):
-    if not os.getenv("DATABASE_URL"):
+    if not db_configured:
         flash("Subscription editing is currently disabled (Database not configured).", "warning")
         return redirect(url_for('index'))
     
     try:
-        sub = Subscription.query.get(int(subscription_id))
+        sub = db.session.get(Subscription, int(subscription_id))
     except ValueError:
         return "Invalid subscription ID", 400
         
@@ -381,7 +425,7 @@ def monitor_cloudflared():
 
 def scheduled_job():
     print("⏰ Running scheduled email trigger job...")
-    if not os.getenv("DATABASE_URL"):
+    if not db_configured:
         print("Database not configured. Cannot run scheduled job.")
         return
     with app.app_context():

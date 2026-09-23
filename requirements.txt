@@ -9,3 +9,5 @@ python-dotenv
 apscheduler
 pytz
 tzdata
+pymysql
+cryptography
