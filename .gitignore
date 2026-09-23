@@ -6,3 +6,5 @@ migrations/
 *.pyo
 venv
 myenv/
+*.pem
+*.epm
